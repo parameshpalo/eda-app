@@ -1,0 +1,28 @@
+# Python / FastAPI
+venv/
+.venv/
+pyvenv.cfg
+
+# Bytecode / caches
+__pycache__/
+*.py[cod]
+**/__pycache__/
+
+# Environment
+.env
+.env.*.local
+
+# Test/coverage
+.pytest_cache/
+.coverage
+.mypy_cache/
+
+# Local DB / data (uncomment if you don't want to commit dataset)
+# *.sqlite3
+# *.db
+# fmcg_data.csv
+
+# Editor
+.vscode/
+.DS_Store
+*.log
