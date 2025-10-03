@@ -5,21 +5,35 @@ const api = axios.create({
 });
 
 export interface Filters {
-  brand?: string;
-  year?: string;
-  pack_type?: string;
-  ppg?: string;
-  channel?: string;
+  brand?: string[];
+  year?: string[];
+  pack_type?: string[];
+  ppg?: string[];
+  channel?: string[];
 }
 
 // Utility: build query string from filters
+// Utility: build query string from filters
 function buildQuery(params: Filters) {
   const search = new URLSearchParams();
-  Object.entries(params).forEach(([k, v]) => {
-    if (v !== undefined && v !== "All") search.append(k, String(v));
+
+  Object.entries(params).forEach(([key, value]) => {
+    if (!value) return;
+
+    if (Array.isArray(value)) {
+      // multiple selections → repeat query param
+      value.forEach((v) => {
+        if (v !== "All") search.append(key, v);
+      });
+    } else {
+      // fallback (in case some filter is still a string)
+      if (value !== "All") search.append(key, value);
+    }
   });
+  console.log(search.toString())
   return search.toString();
 }
+
 
 export const fetchSalesValue = (filters: Filters = {}) =>
   api.get(`/sales-value${buildQuery(filters) ? "?" + buildQuery(filters) : ""}`).then(res => res.data);
