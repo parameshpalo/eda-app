@@ -9,14 +9,25 @@ interface Props {
   setActiveTab: (tab: string) => void;
 }
 
-/** Ensure filters object always has arrays for keys */
 function normalizeFilters(input?: Filters): Filters {
   return {
-    brand: input?.brand ? [...input.brand] : [],
-    year: input?.year ? [...input.year] : [],
-    pack_type: input?.pack_type ? [...input.pack_type] : [],
-    ppg: input?.ppg ? [...input.ppg] : [],
-    channel: input?.channel ? [...input.channel] : [],
+    brand: [...(input?.brand ?? [])],
+    year: [...(input?.year ?? [])],
+    pack_type: [...(input?.pack_type ?? [])],
+    ppg: [...(input?.ppg ?? [])],
+    channel: [...(input?.channel ?? [])],
+    groupMode: input?.groupMode,
+  };
+}
+
+function clearFilters(activeTab: string): Filters {
+  return {
+    brand: [],
+    year: [],
+    pack_type: [],
+    ppg: [],
+    channel: [],
+    groupMode: activeTab === "PPG" ? "ppg" : "brand",
   };
 }
 
@@ -26,7 +37,7 @@ export default function FilterBar({
   activeTab,
   setActiveTab,
 }: Props) {
-  const tabs: string[] = [
+  const tabs = [
     "Brand",
     "Pack Type",
     "PPG",
@@ -34,20 +45,25 @@ export default function FilterBar({
     "Correlation and Trends",
   ];
 
-  // underline animation for tabs
   const [indicatorStyle, setIndicatorStyle] = useState<React.CSSProperties>({});
-  const tabRefs = useRef<Record<string, HTMLButtonElement | null>>(
-    {} as Record<string, HTMLButtonElement | null>
+  const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+
+  const [pendingFilters, setPendingFilters] = useState<Filters>(() =>
+    normalizeFilters(filters)
   );
 
-  // local pending filters (applied only after "Apply")
-  const [pendingFilters, setPendingFilters] = useState<Filters>(() => normalizeFilters(filters));
-
-  // keep pendingFilters in sync if parent `filters` changes from outside
   useEffect(() => {
     setPendingFilters(normalizeFilters(filters));
   }, [filters]);
 
+  // reset filters when active tab changes
+  useEffect(() => {
+    const cleared = clearFilters(activeTab);
+    setPendingFilters(cleared);
+    setFilters(cleared);
+  }, [activeTab, setFilters]);
+
+  // animate tab underline
   useEffect(() => {
     const currentTab = tabRefs.current[activeTab];
     if (currentTab) {
@@ -67,17 +83,14 @@ export default function FilterBar({
   };
 
   const applyFilters = () => {
-    setFilters(normalizeFilters(pendingFilters));
+    const updated = normalizeFilters(pendingFilters);
+    if (activeTab === "Brand") updated.groupMode = "brand";
+    else if (activeTab === "PPG") updated.groupMode = "ppg";
+    setFilters(updated);
   };
 
   const resetFilters = () => {
-    const cleared: Filters = {
-      brand: [],
-      year: [],
-      pack_type: [],
-      ppg: [],
-      channel: [],
-    };
+    const cleared = clearFilters(activeTab);
     setPendingFilters(cleared);
     setFilters(cleared);
   };
@@ -93,7 +106,9 @@ export default function FilterBar({
               ref={(el) => (tabRefs.current[tab] = el)}
               onClick={() => setActiveTab(tab)}
               className={`pb-2 font-medium transition-colors ${
-                activeTab === tab ? "text-gray-900" : "text-gray-500 hover:text-gray-700"
+                activeTab === tab
+                  ? "text-gray-900"
+                  : "text-gray-500 hover:text-gray-700"
               }`}
             >
               {tab}
@@ -110,7 +125,7 @@ export default function FilterBar({
       <div className="flex gap-4 flex-wrap items-end">
         <FilterSelect
           label="Channel"
-          value={pendingFilters.channel || []}
+          value={pendingFilters.channel ?? []}
           options={[
             { label: "Supermarkets", value: "Supermarkets" },
             { label: "Tesco", value: "Tesco" },
@@ -122,52 +137,45 @@ export default function FilterBar({
 
         <FilterSelect
           label="Brand"
-          value={pendingFilters.brand || []}
-          options={[
-            { label: "Brand 1", value: "Brand 1" },
-            { label: "Brand 2", value: "Brand 2" },
-            { label: "Brand 3", value: "Brand 3" },
-            { label: "Brand 4", value: "Brand 4" },
-            { label: "Brand 5", value: "Brand 5" },
-            { label: "Brand 6", value: "Brand 6" },
-          ]}
+          value={pendingFilters.brand ?? []}
+          options={Array.from({ length: 6 }, (_, i) => ({
+            label: `Brand ${i + 1}`,
+            value: `Brand ${i + 1}`,
+          }))}
           onChange={(v) => updatePendingFilter("brand", v)}
         />
 
         <FilterSelect
           label="Pack Type"
-          value={pendingFilters.pack_type || []}
-          options={[
-            { label: "Small", value: "Small" },
-            { label: "Medium", value: "Medium" },
-            { label: "Large", value: "Large" },
-          ]}
+          value={pendingFilters.pack_type ?? []}
+          options={["Small", "Medium", "Large"].map((p) => ({
+            label: p,
+            value: p,
+          }))}
           onChange={(v) => updatePendingFilter("pack_type", v)}
         />
 
         <FilterSelect
           label="PPG"
-          value={pendingFilters.ppg || []}
+          value={pendingFilters.ppg ?? []}
           options={[
-            { label: "Small Single", value: "Small Single" },
-            { label: "Small Multi", value: "Small Multi" },
-            { label: "Small SNAP POTS", value: "Small SNAP POTS" },
-            { label: "Standard Single", value: "Standard Single" },
-            { label: "Standard Multi", value: "Standard Multi" },
-            { label: "Others", value: "Others" },
-          ]}
+            "Small Single",
+            "Small Multi",
+            "Small SNAP POTS",
+            "Standard Single",
+            "Standard Multi",
+            "Others",
+          ].map((p) => ({ label: p, value: p }))}
           onChange={(v) => updatePendingFilter("ppg", v)}
         />
 
         <FilterSelect
           label="Year"
-          value={pendingFilters.year || []}
-          options={[
-            { label: "2021", value: "2021" },
-            { label: "2022", value: "2022" },
-            { label: "2023", value: "2023" },
-            { label: "2024", value: "2024" }, // fixed value
-          ]}
+          value={pendingFilters.year ?? []}
+          options={[2021, 2022, 2023, 2024].map((y) => ({
+            label: String(y),
+            value: String(y),
+          }))}
           onChange={(v) => updatePendingFilter("year", v)}
         />
 
@@ -175,17 +183,17 @@ export default function FilterBar({
         <div className="flex gap-2">
           <button
             onClick={applyFilters}
-            className="px-4 py-2 bg-indigo-600 text-white rounded-lg shadow-sm 
-                     hover:bg-indigo-700 hover:scale-105 active:scale-95 
-                     transition-all duration-200"
+            className="px-4 py-2 bg-yellow-500 text-white rounded-lg shadow-sm 
+                       hover:bg-yellow-600 hover:scale-105 active:scale-95 
+                       transition-all duration-200"
           >
             Apply
           </button>
           <button
             onClick={resetFilters}
             className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg shadow-sm 
-                     hover:bg-gray-300 hover:scale-105 active:scale-95 
-                     transition-all duration-200"
+                       hover:bg-gray-300 hover:scale-105 active:scale-95 
+                       transition-all duration-200"
           >
             Reset
           </button>

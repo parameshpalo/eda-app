@@ -1,22 +1,23 @@
 import { useEffect, useRef, useState } from "react";
+import { Tab } from "../assets/types";
 
 interface SubHeaderProps {
-  activeTab: string;
-  setActiveTab: (tab: string) => void;
+  activeTab: Tab;
+  setActiveTab: (tab: Tab) => void;
 }
 
-export default function SubHeader({ activeTab, setActiveTab }: SubHeaderProps) {
-  const tabs = ["Trends", "CSF Results", "Scenario Planning"];
+const tabs: Tab[] = ["Trends", "CSF Results", "Scenario Planning"];
 
+export default function SubHeader({ activeTab, setActiveTab }: SubHeaderProps) {
   const [indicatorStyle, setIndicatorStyle] = useState({});
-  const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const tabRefs = useRef<(HTMLButtonElement | null)[]>([]); // array of refs
 
   useEffect(() => {
-    const currentTab = tabRefs.current[activeTab];
+    const idx = tabs.indexOf(activeTab);
+    const currentTab = tabRefs.current[idx];
     if (currentTab) {
       setIndicatorStyle({
         width: currentTab.offsetWidth,
-        height: currentTab.offsetHeight - 10,
         transform: `translateX(${currentTab.offsetLeft}px)`,
       });
     }
@@ -29,23 +30,21 @@ export default function SubHeader({ activeTab, setActiveTab }: SubHeaderProps) {
           Consumer Surplus Factor (CSF)
         </h2>
 
-        <div className="relative bg-gray-200 border-b">
+        <div className="relative bg-gray-200 border-b rounded-md">
           <div className="flex items-center space-x-2 relative">
+            {/* Active Tab Indicator */}
             <span
               className="absolute left-0 bg-white shadow rounded-md transition-all duration-300 ease-in-out z-0"
               style={{
                 ...indicatorStyle,
-                top: "50%",
-                transform: `${(indicatorStyle as any).transform} translateY(-50%)`,
+                height: "calc(100% - 8px)",
+                top: "4px",
               }}
             />
-
-            {tabs.map((tab) => (
+            {tabs.map((tab, i) => (
               <button
                 key={tab}
-                ref={(el: HTMLButtonElement | null) => {
-                  tabRefs.current[tab] = el;
-                }}
+                ref={(el) => {(tabRefs.current[i] = el)}}
                 onClick={() => setActiveTab(tab)}
                 className={`px-4 py-2 font-medium relative z-10 transition-colors ${
                   activeTab === tab

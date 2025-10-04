@@ -5,7 +5,11 @@ export interface Filters {
   pack_type?: string[];
   ppg?: string[];
   channel?: string[];
+  groupMode?: "brand" | "ppg";  
 }
+
+
+export type Tab = "Trends" | "CSF Results" | "Scenario Planning" ;
 
 
 export interface FilterOption {

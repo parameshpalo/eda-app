@@ -31,7 +31,6 @@ def apply_filters(
         query = query.filter(FMCGData.channel.in_(channel))
     return query
 
-
 # ---- Utility: Dynamic grouping and aggregation ----
 GROUP_MAP = {
     "year": FMCGData.year,
@@ -45,13 +44,16 @@ GROUP_MAP = {
 
 def run_grouped_query(
     db: Session,
-    metric_col,                    # e.g. FMCGData.sales_value or FMCGData.volume
-    agg_func: Callable = func.sum, # aggregation function (default = sum)
-    group_by: List[str] = ["year"], # fields to group by
-    filters: Dict[str, Any] = None, # filters dict
-    label: str = "value",          # name of aggregated field
+    metric_col,
+    agg_func: Callable = func.sum,
+    group_by: List[str] = ["year"],
+    filters: Optional[Dict[str, Any]] = None,
+    label: str = "value",
 ):
-    # validate group_by
+    # Validate group_by fields
+    if not group_by:
+        raise HTTPException(status_code=400, detail="group_by cannot be empty")
+
     try:
         group_cols = [GROUP_MAP[g] for g in group_by]
     except KeyError as e:
@@ -60,17 +62,26 @@ def run_grouped_query(
             detail=f"Invalid group_by: {e.args[0]}. Allowed: {list(GROUP_MAP.keys())}"
         )
 
-    query = db.query(*group_cols, agg_func(metric_col).label(label)).group_by(*group_cols)
+    # Build base query
+    query = db.query(*group_cols, agg_func(metric_col).label(label))
 
+    # Apply filters early for performance
     if filters:
+        filters = {k: v for k, v in filters.items() if v}
         query = apply_filters(query, **filters)
 
+    # Grouping and ordering
+    query = query.group_by(*group_cols).order_by(*group_cols)
+
+    # Execute
     results = query.all()
 
+    # Format output (no change to response names)
     output = []
     for r in results:
         row = {col: getattr(r, col) for col in group_by}
-        row[label] = round(getattr(r, label), 2)
+        value = getattr(r, label)
+        row[label] = round(value, 2) if isinstance(value, (float, int)) else value
         output.append(row)
 
     return output
@@ -88,14 +99,13 @@ def get_fmcg_data(
 ):
     query = db.query(FMCGData)
     query = apply_filters(query, brand, year, pack_type, ppg, channel)
-    return query.limit(500).all()  # pagination later
+    return query.limit(500).all()  # pagination can be added later
 
 
-# ---- 1. Sales Value ----
 # ---- 1. Sales Value ----
 @router.get("/sales-value")
 def get_sales_value(
-    group_by: List[str] = Query(["year","brand"]),
+    group_by: List[str] = Query(...),
     brand: Optional[List[str]] = Query(None),
     year: Optional[List[int]] = Query(None),
     pack_type: Optional[List[str]] = Query(None),
@@ -105,18 +115,18 @@ def get_sales_value(
 ):
     filters = dict(brand=brand, year=year, pack_type=pack_type, ppg=ppg, channel=channel)
     return run_grouped_query(
-        db, 
+        db,
         metric_col=FMCGData.sales_value,
         group_by=group_by,
         filters=filters,
-        label="value"   # 👈 changed
+        label="value"
     )
 
 
 # ---- 2. Volume Contribution ----
 @router.get("/volume-contribution")
 def get_volume_contribution(
-    group_by: List[str] = Query(["year","brand"]),
+    group_by: List[str] = Query(...),
     brand: Optional[List[str]] = Query(None),
     year: Optional[List[int]] = Query(None),
     pack_type: Optional[List[str]] = Query(None),
@@ -130,14 +140,15 @@ def get_volume_contribution(
         metric_col=FMCGData.volume,
         group_by=group_by,
         filters=filters,
-        label="value"   # 👈 changed
+        label="value"
     )
 
 
 # ---- 3. Yearly Sales (vertical bar) ----
 @router.get("/yearly-sales")
 def get_yearly_sales(
-    group_by: List[str] = Query(["brand", "year"]),
+    metric: str = Query("sales", enum=["sales", "volume"]),
+    group_by: List[str] = Query(...),
     brand: Optional[List[str]] = Query(None),
     year: Optional[List[int]] = Query(None),
     pack_type: Optional[List[str]] = Query(None),
@@ -145,10 +156,11 @@ def get_yearly_sales(
     channel: Optional[List[str]] = Query(None),
     db: Session = Depends(get_db),
 ):
+    metric_col = FMCGData.sales_value if metric == "sales" else FMCGData.volume
     filters = dict(brand=brand, year=year, pack_type=pack_type, ppg=ppg, channel=channel)
     return run_grouped_query(
         db,
-        metric_col=FMCGData.sales_value,
+        metric_col,
         group_by=group_by,
         filters=filters,
         label="total_sales"
@@ -158,6 +170,7 @@ def get_yearly_sales(
 # ---- 4. Monthly Sales Trend (Line Chart) ----
 @router.get("/trend")
 def get_sales_trend(
+    metric: str = Query("sales", enum=["sales", "volume"]),
     brand: Optional[List[str]] = Query(None),
     year: Optional[List[int]] = Query(None),
     pack_type: Optional[List[str]] = Query(None),
@@ -165,15 +178,19 @@ def get_sales_trend(
     channel: Optional[List[str]] = Query(None),
     db: Session = Depends(get_db),
 ):
+    metric_col = FMCGData.sales_value if metric == "sales" else FMCGData.volume
     filters = dict(brand=brand, year=year, pack_type=pack_type, ppg=ppg, channel=channel)
 
     query = db.query(
         FMCGData.year,
         FMCGData.month,
-        func.sum(FMCGData.sales_value).label("total_sales")
-    ).group_by(FMCGData.year, FMCGData.month).order_by(FMCGData.year, FMCGData.month)
-
+        func.sum(metric_col).label("total_sales")
+    )
+    filters = {k: v for k, v in filters.items() if v is not None}
     query = apply_filters(query, **filters)
+
+    query = query.group_by(FMCGData.year, FMCGData.month).order_by(FMCGData.year, FMCGData.month)
+
     results = query.all()
 
     return [
@@ -186,7 +203,7 @@ def get_sales_trend(
 @router.get("/market-share")
 def get_market_share(
     metric: str = Query("sales", enum=["sales", "volume"]),
-    group_by: List[str] = Query(["brand"]),
+    group_by: List[str] = Query(...),
     brand: Optional[List[str]] = Query(None),
     year: Optional[List[int]] = Query(None),
     pack_type: Optional[List[str]] = Query(None),
@@ -194,13 +211,21 @@ def get_market_share(
     channel: Optional[List[str]] = Query(None),
     db: Session = Depends(get_db),
 ):
-    filters = dict(brand=brand, year=year, pack_type=pack_type, ppg=ppg, channel=channel)
     metric_col = FMCGData.sales_value if metric == "sales" else FMCGData.volume
+    filters = dict(brand=brand, year=year, pack_type=pack_type, ppg=ppg, channel=channel)
 
-    results = run_grouped_query(db, metric_col, group_by=group_by, filters=filters, label="value")
+    results = run_grouped_query(
+        db, metric_col, group_by=group_by, filters=filters, label="value"
+    )
 
     total = sum(r["value"] for r in results) or 1
     for r in results:
         r["percentage"] = round((r["value"] / total) * 100, 2)
 
     return results
+
+
+# ---- Optional: Health Check (for CI/CD or uptime) ----
+@router.get("/health")
+def health_check():
+    return {"status": "ok"}
