@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   fetchSalesValue,
@@ -39,14 +39,15 @@ export default function Dashboard() {
   const [filters, setFilters] = useState<Filters>({});
   const [dataTab, setDataTab] = useState<DataTab>("Brand");
 
-  // Metric states
+  // Separate metrics for each chart
   const [marketMetric, setMarketMetric] = useState<"sales" | "volume">("sales");
   const [yearlyMetric, setYearlyMetric] = useState<"sales" | "volume">("sales");
   const [trendMetric, setTrendMetric] = useState<"sales" | "volume">("sales");
 
-  const serializedFilters = JSON.stringify(filters);
+  // Memoize filters to keep queryKeys stable
+  const serializedFilters = useMemo(() => JSON.stringify(filters), [filters]);
 
-  // Queries
+  // Queries (each with unique queryKey)
   const { data: salesValue, isLoading: salesLoading } = useQuery({
     queryKey: ["sales-value", serializedFilters],
     queryFn: () => fetchSalesValue(filters),
