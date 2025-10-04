@@ -12,7 +12,7 @@ Base.metadata.create_all(bind=engine)
 # ------------------------
 # CSV Path
 # ------------------------
-csv_file = "C:/Users/param/OneDrive/Desktop/New folder/fmcg_data.csv"
+csv_file = "fmcg_data.csv"
 
 # ------------------------
 # Read CSV safely

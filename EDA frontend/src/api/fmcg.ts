@@ -10,65 +10,84 @@ export interface Filters {
   pack_type?: string[];
   ppg?: string[];
   channel?: string[];
-  groupMode?: "brand" | "ppg"; // 👈 added
+  groupMode?: "brand" | "ppg";
+  metric?: "sales" | "volume"; // included for trend/yearly endpoints
 }
 
-// ---- Utility: build query string for normal chart endpoints ----
-function buildQuery(params: Filters, includeYear = true) {
+/* -------------------- Utility Functions -------------------- */
+
+/**  Builds URLSearchParams for filters */
+function buildQuery(params: Filters, includeYear = true): string {
   const search = new URLSearchParams();
 
   Object.entries(params).forEach(([key, value]) => {
     if (!value) return;
 
     if (Array.isArray(value)) {
-      value.forEach((v) => {
-        if (v !== "All") search.append(key, v);
-      });
-    } else {
-      if (value !== "All") search.append(key, value);
+      value
+        .filter((v) => v !== "All")
+        .forEach((v) => search.append(key, v));
+    } else if (value !== "All") {
+      search.append(key, value);
     }
   });
 
-  // 👇 Inject group_by automatically
-  if (includeYear) {
-    search.append("group_by", "year");
-  }
-  search.append("group_by", params.groupMode || "brand"); // default brand
+  // Include grouping
+  if (includeYear) search.append("group_by", "year");
+  search.append("group_by", params.groupMode || "brand");
 
   return search.toString();
 }
 
-// ---- API Calls ----
+/** Helper for GET requests with query strings */
+const get = async (endpoint: string, query: string) => {
+  const { data } = await api.get(`${endpoint}?${query}`);
+  return data;
+};
+
+/* -------------------- API Endpoints -------------------- */
+
+/**  Sales Value */
 export const fetchSalesValue = (filters: Filters = {}) =>
-  api
-    .get(`/sales-value?${buildQuery(filters, true)}`)
-    .then((res) => res.data);
+  get("/sales-value", buildQuery(filters, true));
 
+/**  Volume Contribution */
 export const fetchVolumeContribution = (filters: Filters = {}) =>
-  api
-    .get(`/volume-contribution?${buildQuery(filters, true)}`)
-    .then((res) => res.data);
+  get("/volume-contribution", buildQuery(filters, true));
 
+/**  Yearly Sales (sales or volume metric) */
 export const fetchYearlySales = (filters: Filters = {}) =>
-  api
-    .get(`/yearly-sales?${buildQuery(filters, true)}`)
-    .then((res) => res.data);
+  get("/yearly-sales", buildQuery(filters, true));
 
-export const fetchSalesTrend = (filters: Filters = {}) =>
-  api
-    .get(`/trend?${buildQuery(filters, true)}`)
-    .then((res) => res.data);
+/**  Sales or Volume Trend (with year + month grouping) */
+export const fetchSalesTrend = (filters: Filters = {}) => {
+  const groupBy = ["year", "month", filters.groupMode || "brand"];
+  const query = buildQuery(filters, false);
+  const metric = filters.metric || "sales";
 
-// ---- Market Share (⚡ no year grouping here) ----
+  const fullQuery = [
+    `metric=${metric}`,
+    ...groupBy.map((g) => `group_by=${g}`),
+    query,
+  ]
+    .filter(Boolean)
+    .join("&");
+
+  return get("/trend", fullQuery);
+};
+
+/**  Market Share ( no year grouping) */
 export const fetchMarketShare = (
   metric: "sales" | "volume" = "sales",
   filters: Filters = {}
 ) => {
-  const groupBy = filters.groupMode === "ppg" ? "ppg" : "brand"; // ✅ force grouping
-  const { year, ...rest } = filters; // ✅ drop year filter
-  const query = buildQuery(rest, false); // ⚡ skip year
+  const groupBy = filters.groupMode === "ppg" ? "ppg" : "brand";
+  const { year, ...rest } = filters;
+  const query = buildQuery(rest, false);
 
-  return api
-    .get(`/market-share?metric=${metric}&group_by=${groupBy}${query ? "&" + query : ""}`)
-    .then((res) => res.data);
+  const fullQuery = [`metric=${metric}`, `group_by=${groupBy}`, query]
+    .filter(Boolean)
+    .join("&");
+
+  return get("/market-share", fullQuery);
 };

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   fetchSalesValue,
@@ -10,18 +10,15 @@ import {
 } from "../api/fmcg";
 
 // Components
-import SalesBarChart from "../components/charts/SalesBarChart";
+import StackedBarChart from "../components/charts/StackedBarChart";
 import MarketSharePie from "../components/charts/MarketSharePie";
-import VolumeContributionChart from "../components/charts/VolumeContributionChart";
 import YearlySalesChart from "../components/charts/YearlySalesChart";
 import SalesTrendChart from "../components/charts/SalesTrendChart";
 import FilterBar from "../components/FilterBar";
 import Placeholder from "../components/Placeholder";
 
-type DataTab = "Brand" | "PPG" | "Other";
-
 /** Reusable Card Wrapper for Charts */
-function ChartCard({
+const ChartCard = ({
   title,
   isLoading,
   children,
@@ -29,23 +26,27 @@ function ChartCard({
   title: string;
   isLoading: boolean;
   children: React.ReactNode;
-}) {
-  return (
-    <div className="bg-white p-6 rounded-2xl shadow-md">
-      <h2 className="text-lg font-semibold mb-2 text-left">{title}</h2>
-      {isLoading ? <p>Loading {title}...</p> : children}
-    </div>
-  );
-}
+}) => (
+  <div className="bg-white p-6 rounded-2xl shadow-md">
+    <h2 className="text-lg font-semibold mb-2 text-left">{title}</h2>
+    {isLoading ? <p className="text-gray-500">Loading {title}...</p> : children}
+  </div>
+);
+
+type DataTab = "Brand" | "PPG" | "Other";
 
 export default function Dashboard() {
   const [filters, setFilters] = useState<Filters>({});
   const [dataTab, setDataTab] = useState<DataTab>("Brand");
 
-  // ✅ Serialize filters for stable query keys
+  // Metric states
+  const [marketMetric, setMarketMetric] = useState<"sales" | "volume">("sales");
+  const [yearlyMetric, setYearlyMetric] = useState<"sales" | "volume">("sales");
+  const [trendMetric, setTrendMetric] = useState<"sales" | "volume">("sales");
+
   const serializedFilters = JSON.stringify(filters);
 
-  // ✅ Queries
+  // Queries
   const { data: salesValue, isLoading: salesLoading } = useQuery({
     queryKey: ["sales-value", serializedFilters],
     queryFn: () => fetchSalesValue(filters),
@@ -57,32 +58,40 @@ export default function Dashboard() {
   });
 
   const { data: yearlySales, isLoading: yearlyLoading } = useQuery({
-    queryKey: ["yearly-sales", serializedFilters],
-    queryFn: () => fetchYearlySales(filters),
-  });
-
-  const { data: salesTrend, isLoading: trendLoading } = useQuery({
-    queryKey: ["sales-trend", serializedFilters],
-    queryFn: () => fetchSalesTrend(filters),
-  });
-
-  // ✅ Market Share (ignore year)
-  const { data: marketShare, isLoading: shareLoading } = useQuery({
-    queryKey: ["market-share", filters.groupMode, serializedFilters],
+    queryKey: ["yearly-sales", filters.groupMode, yearlyMetric, serializedFilters],
     queryFn: () =>
-      fetchMarketShare("sales", {
+      fetchYearlySales({
         ...filters,
-        year: [],
-        groupMode: filters.groupMode
+        groupMode: filters.groupMode,
+        metric: yearlyMetric,
       }),
   });
 
-  // ✅ Only show charts for valid tabs
+  const { data: salesTrend, isLoading: trendLoading } = useQuery({
+    queryKey: ["sales-trend", filters.groupMode, trendMetric, serializedFilters],
+    queryFn: () =>
+      fetchSalesTrend({
+        ...filters,
+        groupMode: filters.groupMode,
+        metric: trendMetric,
+      }),
+  });
+
+  const { data: marketShare, isLoading: shareLoading } = useQuery({
+    queryKey: ["market-share", filters.groupMode, marketMetric, serializedFilters],
+    queryFn: () =>
+      fetchMarketShare(marketMetric, {
+        ...filters,
+        year: [],
+        groupMode: filters.groupMode,
+      }),
+  });
+
   const showCharts = dataTab === "Brand" || dataTab === "PPG";
 
   return (
     <div className="p-6 space-y-6">
-      {/* Filters + Tab Bar */}
+      {/* Filters + Tabs */}
       <FilterBar
         filters={filters}
         setFilters={setFilters}
@@ -93,47 +102,65 @@ export default function Dashboard() {
       {showCharts ? (
         <>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* --- Sales Value --- */}
             <ChartCard title="Sales Value (EURO)" isLoading={salesLoading}>
               {salesValue && (
-                <SalesBarChart data={salesValue} groupMode={filters.groupMode} />
-              )}
-            </ChartCard>
-
-            <ChartCard title="Volume Contribution (KG)" isLoading={volumeLoading}>
-              {volumeContribution && (
-                <VolumeContributionChart
-                  data={volumeContribution}
+                <StackedBarChart
+                  data={salesValue}
+                  type="sales"
                   groupMode={filters.groupMode}
                 />
               )}
             </ChartCard>
 
-            <ChartCard title="Yearly Sales" isLoading={yearlyLoading}>
+            {/* --- Volume Contribution --- */}
+            <ChartCard title="Volume Contribution (KG)" isLoading={volumeLoading}>
+              {volumeContribution && (
+                <StackedBarChart
+                  data={volumeContribution}
+                  type="volume"
+                  groupMode={filters.groupMode}
+                />
+              )}
+            </ChartCard>
+
+            {/* --- Yearly Sales --- */}
+            <ChartCard title="Year Wise Data" isLoading={yearlyLoading}>
               {yearlySales && (
                 <YearlySalesChart
                   data={yearlySales}
                   groupMode={filters.groupMode}
+                  metric={yearlyMetric}
+                  setMetric={setYearlyMetric}
                 />
               )}
             </ChartCard>
 
-            <ChartCard title="Sales Trend" isLoading={trendLoading}>
+            {/* --- Sales Trend --- */}
+            <ChartCard title="Monthly Trends" isLoading={trendLoading}>
               {salesTrend && (
                 <SalesTrendChart
                   data={salesTrend}
                   groupMode={filters.groupMode}
+                  metric={trendMetric}
+                  setMetric={setTrendMetric}
                 />
               )}
             </ChartCard>
           </div>
 
+          {/* --- Market Share --- */}
           <MarketSharePie
             data={marketShare || []}
             groupMode={filters.groupMode}
+            metric={marketMetric}
+            setMetric={setMarketMetric}
             isLoading={shareLoading}
           />
         </>
-      ) : (<Placeholder/>)}
+      ) : (
+        <Placeholder />
+      )}
     </div>
   );
 }
