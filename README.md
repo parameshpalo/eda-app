@@ -88,10 +88,11 @@ Access the frontend at:
 http://localhost:5173
 ```
 Edit base url inside /EDA frontend/src/api/fmcg.ts change the baseURL
+creently it is connected to render delpoyed application
 ```
 baseURL :  http://localhost:8000/api/fmcg
 ```
-creently it is connected to render delpoyed application
+
 ---
 
 ## 🧩 Design Decisions
