@@ -1,8 +1,8 @@
 import axios from "axios";
 
 const api = axios.create({
-  baseURL: "http://localhost:8000/api/fmcg",
-  // baseURL : "https://eda-app-068n.onrender.com/api/fmcg"
+  // baseURL: "http://localhost:8000/api/fmcg",
+  baseURL : "https://eda-app-068n.onrender.com/api/fmcg"
 });
 
 export interface Filters {
