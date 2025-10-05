@@ -1,11 +1,11 @@
-import { useMemo } from "react";
+import React, { useMemo, useCallback, useEffect, useState } from "react";
 import {
   PieChart,
   Pie,
   Cell,
   Tooltip,
-  Legend,
   ResponsiveContainer,
+  Legend,
 } from "recharts";
 import MetricDropdown from "../MetricDropdown";
 
@@ -26,14 +26,20 @@ interface Props {
 }
 
 const DEFAULT_COLORS = [
-  "#f59e0b", "#3b82f6", "#10b981", "#a7f3d0",
-  "#9333ea", "#ef4444", "#6366f1", "#f97316",
+  "#f59e0b",
+  "#3b82f6",
+  "#10b981",
+  "#a7f3d0",
+  "#9333ea",
+  "#ef4444",
+  "#6366f1",
+  "#f97316",
 ];
 
 const formatM = (v: number) => `${(v / 1_000_000).toFixed(2)}M`;
 
-/** Tooltip that shows only the group name */
-function GroupTooltip({ active, payload }: any) {
+/** Tooltip showing brand/PPG only */
+const GroupTooltip = ({ active, payload }: any) => {
   if (!active || !payload?.length) return null;
   const name = payload[0]?.payload?.brand || payload[0]?.payload?.ppg || "";
   return (
@@ -51,28 +57,49 @@ function GroupTooltip({ active, payload }: any) {
       {name}
     </div>
   );
-}
+};
 
-/** Outer label showing value + percentage */
-function renderOuterLabel({ cx, cy, midAngle, outerRadius, payload }: any) {
-  const RAD = Math.PI / 180;
-  const sin = Math.sin(-midAngle * RAD);
-  const cos = Math.cos(-midAngle * RAD);
-  const x = cx + (outerRadius + 24) * cos;
-  const y = cy + (outerRadius + 24) * sin;
+/** ✅ Custom Legend with stable keys & no flicker */
+const CustomLegend = React.memo(
+  ({ data, colors }: { data: Datum[]; colors: string[] }) => (
+    <ul className="flex flex-wrap justify-center gap-4 mt-3">
+      {data.map((d, i) => (
+        <li
+          key={d.brand || d.ppg || `segment-${i}`}
+          className="text-sm text-gray-700"
+        >
+          <span
+            className="inline-block w-3 h-3 mr-2 rounded-full"
+            style={{ backgroundColor: colors[i % colors.length] }}
+          ></span>
+          {(d.brand || d.ppg) ?? "N/A"} — {d.percentage?.toFixed(1) ?? "0.0"}%
+        </li>
+      ))}
+    </ul>
+  )
+);
 
-  return (
-    <text
-      x={x}
-      y={y}
-      textAnchor={cos >= 0 ? "start" : "end"}
-      dominantBaseline="central"
-      style={{ fontSize: 11, fill: "#374151" }}
-    >
-      {formatM(payload.value)} ({payload.percentage?.toFixed(1) ?? "0.0"}%)
-    </text>
-  );
-}
+/** ✅ Outer label — memoized for stability */
+const useRenderOuterLabel = () =>
+  useCallback(({ cx, cy, midAngle, outerRadius, payload }: any) => {
+    const RAD = Math.PI / 180;
+    const sin = Math.sin(-midAngle * RAD);
+    const cos = Math.cos(-midAngle * RAD);
+    const x = cx + (outerRadius + 24) * cos;
+    const y = cy + (outerRadius + 24) * sin;
+
+    return (
+      <text
+        x={x}
+        y={y}
+        textAnchor={cos >= 0 ? "start" : "end"}
+        dominantBaseline="central"
+        style={{ fontSize: 11, fill: "#374151" }}
+      >
+        {formatM(payload.value)} ({payload.percentage?.toFixed(1) ?? "0.0"}%)
+      </text>
+    );
+  }, []);
 
 export default function MarketSharePie({
   data,
@@ -82,20 +109,42 @@ export default function MarketSharePie({
   isLoading,
   colors = DEFAULT_COLORS,
 }: Props) {
-  // calculate % locally
+  // ✅ Normalize + sort data for consistent rendering
   const normalized = useMemo(() => {
+    if (!data?.length) return [];
     const total = data.reduce((sum, d) => sum + (d.value || 0), 0);
-    return data.map((d) => ({
+    const sorted = [...data].sort((a, b) =>
+      (a.brand || a.ppg || "").localeCompare(b.brand || b.ppg || "")
+    );
+    return sorted.map((d) => ({
       ...d,
-      percentage: d.percentage ?? (total > 0 ? (d.value / total) * 100 : 0),
+      percentage: total > 0 ? (d.value / total) * 100 : 0,
     }));
   }, [data]);
 
+  const [animate, setAnimate] = useState(true);
+  // ✅ Disable animation on metric changes after first render
+  useEffect(() => {
+    setAnimate(false);
+    const timeout = setTimeout(() => setAnimate(true), 200); // smooth recovery
+    return () => clearTimeout(timeout);
+  }, [metric]);
+
+  const renderOuterLabel = useRenderOuterLabel();
+
   if (isLoading)
-    return <div className="bg-white p-6 rounded-2xl text-center text-gray-500">Loading Market Share...</div>;
+    return (
+      <div className="bg-white p-6 rounded-2xl text-center text-gray-500">
+        Loading Market Share...
+      </div>
+    );
 
   if (!normalized.length)
-    return <div className="bg-white p-6 rounded-2xl text-center text-gray-500">No market share data available</div>;
+    return (
+      <div className="bg-white p-6 rounded-2xl text-center text-gray-500">
+        No market share data available
+      </div>
+    );
 
   const total = normalized.reduce((s, d) => s + (d.value || 0), 0);
 
@@ -119,12 +168,15 @@ export default function MarketSharePie({
             outerRadius={120}
             paddingAngle={2}
             label={renderOuterLabel}
-            isAnimationActive
+            isAnimationActive={animate}
             animationDuration={900}
             animationEasing="ease-in-out"
           >
-            {normalized.map((_, idx) => (
-              <Cell key={idx} fill={colors[idx % colors.length]} />
+            {normalized.map((d, idx) => (
+              <Cell
+                key={d.brand || d.ppg || idx}
+                fill={colors[idx % colors.length]}
+              />
             ))}
           </Pie>
 
@@ -148,9 +200,11 @@ export default function MarketSharePie({
           </text>
 
           <Tooltip content={<GroupTooltip />} isAnimationActive={false} />
-          <Legend verticalAlign="bottom" align="center" iconType="circle" wrapperStyle={{ fontSize: 13 }} />
         </PieChart>
       </ResponsiveContainer>
+
+      {/* ✅ Stable Custom Legend */}
+      <CustomLegend data={normalized} colors={colors} />
     </div>
   );
 }
