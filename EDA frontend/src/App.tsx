@@ -6,6 +6,7 @@ import Dashboard from "./pages/Dashboard";
 import Header from "./components/Header";
 import SubHeader from "./components/SubHeader";
 import Placeholder from "./components/Placeholder";
+import SidebarMenu from "./components/SidebarMenu";
 
 import { Tab }   from "./assets/types";
 
@@ -17,15 +18,28 @@ import "./App.css";
 const queryClient = new QueryClient();
 
 
-function App() {
+interface AppProps {
+  onLogout: () => void;
+}
+
+function App({ onLogout }: AppProps) {
   
   const [activeTab, setActiveTab] = useState<Tab>("Trends");
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  const toggleSidebar = () => {
+    setIsSidebarOpen(!isSidebarOpen);
+  };
+
+  const closeSidebar = () => {
+    setIsSidebarOpen(false);
+  };
 
   return (
     <QueryClientProvider client={queryClient}>
       <div className="min-h-screen bg-gray-100">
         
-        <Header />
+        <Header onMenuToggle={toggleSidebar} onLogout={onLogout} />
 
         <main className="pt-16">
 
@@ -35,6 +49,9 @@ function App() {
           {activeTab === "Trends" ? (<Dashboard /> ) : (<Placeholder/>)}
 
         </main>
+
+        {/* Sidebar Menu */}
+        <SidebarMenu isOpen={isSidebarOpen} onClose={closeSidebar} />
 
       </div>
     </QueryClientProvider>

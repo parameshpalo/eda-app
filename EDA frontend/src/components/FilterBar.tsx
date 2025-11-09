@@ -2,14 +2,16 @@ import React, { useRef, useEffect, useState } from "react";
 import FilterSelect from "./FilterSelect";
 import { Filters } from "../assets/types";
 
+type DataTab = "Brand" | "PPG" | "Pack Type" | "Brand X Pack Type X PPG" | "Correlation and Trends";
+
 interface Props {
   filters: Filters;
   setFilters: (f: Filters) => void;
-  activeTab: string;
-  setActiveTab: (tab: string) => void;
+  activeTab: DataTab;
+  setActiveTab: (tab: DataTab) => void;
 }
 
-const TABS = [
+const TABS : DataTab[] = [
   "Brand",
   "Pack Type",
   "PPG",
@@ -64,7 +66,8 @@ export default function FilterBar({
     const cleared = clearFilters(activeTab);
     setPending(cleared);
     setFilters(cleared);
-  }, [activeTab, setFilters]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]); // setFilters is a setState function and is stable, no need to include it
 
   useEffect(() => {
     const tab = tabRefs.current[activeTab];
@@ -97,11 +100,12 @@ export default function FilterBar({
   ) => (
     <FilterSelect
       label={label}
-      value={pending[key] ?? []}
+      value ={pending[key] ?? []}
       options={items.map((i) => ({ label: String(i), value: String(i) }))}
       onChange={(v) => updateFilter(key, v)}
     />
   );
+
 
   return (
     <div>
@@ -111,7 +115,7 @@ export default function FilterBar({
           {TABS.map((tab) => (
             <button
               key={tab}
-              ref={(el) => (tabRefs.current[tab] = el)}
+              ref={(el) => {(tabRefs.current[tab] = el)}}
               onClick={() => setActiveTab(tab)}
               className={`pb-2 font-medium transition-colors ${
                 activeTab === tab

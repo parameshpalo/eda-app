@@ -1,14 +1,16 @@
-import React, { useMemo, useCallback, useEffect, useState } from "react";
+import React, { useMemo, useCallback } from "react";
 import {
   PieChart,
   Pie,
   Cell,
   Tooltip,
   ResponsiveContainer,
-  Legend,
 } from "recharts";
 import MetricDropdown from "../MetricDropdown";
 
+// ---------------------------
+// 🔹 Type definitions
+// ---------------------------
 interface Datum {
   brand?: string;
   ppg?: string;
@@ -25,6 +27,9 @@ interface Props {
   colors?: string[];
 }
 
+// ---------------------------
+// 🔹 Constants
+// ---------------------------
 const DEFAULT_COLORS = [
   "#f59e0b",
   "#3b82f6",
@@ -36,12 +41,26 @@ const DEFAULT_COLORS = [
   "#f97316",
 ];
 
-const formatM = (v: number) => `${(v / 1_000_000).toFixed(2)}M`;
+const formatM = (v: number | undefined) => {
+  if (v == null || !Number.isFinite(v)) return "0M";
+  return `${(v / 1_000_000).toFixed(2)}M`;
+};
 
-/** Tooltip showing brand/PPG only */
-const GroupTooltip = ({ active, payload }: any) => {
+// ---------------------------
+// 🔹 Custom Tooltip
+// ---------------------------
+interface TooltipProps {
+  active?: boolean;
+  payload?: Array<{
+    payload?: Datum;
+  }>;
+}
+
+const GroupTooltip = ({ active, payload }: TooltipProps) => {
   if (!active || !payload?.length) return null;
-  const name = payload[0]?.payload?.brand || payload[0]?.payload?.ppg || "";
+
+  const { brand, ppg, value, percentage } = payload[0]?.payload || {};
+
   return (
     <div
       style={{
@@ -54,12 +73,17 @@ const GroupTooltip = ({ active, payload }: any) => {
         whiteSpace: "nowrap",
       }}
     >
-      {name}
+      <div>{brand || ppg}</div>
+      <div style={{ fontSize: 11, color: "#d1d5db" }}>
+        {formatM(value)} • {percentage?.toFixed(1)}%
+      </div>
     </div>
   );
 };
 
-/** ✅ Custom Legend with stable keys & no flicker */
+// ---------------------------
+// 🔹 Custom Legend
+// ---------------------------
 const CustomLegend = React.memo(
   ({ data, colors }: { data: Datum[]; colors: string[] }) => (
     <ul className="flex flex-wrap justify-center gap-4 mt-3">
@@ -72,21 +96,38 @@ const CustomLegend = React.memo(
             className="inline-block w-3 h-3 mr-2 rounded-full"
             style={{ backgroundColor: colors[i % colors.length] }}
           ></span>
-          {(d.brand || d.ppg) ?? "N/A"} — {d.percentage?.toFixed(1) ?? "0.0"}%
+          {(d.brand || d.ppg) ?? "N/A"} —{" "}
+          {d.percentage?.toFixed(1) ?? "0.0"}%
         </li>
       ))}
     </ul>
   )
 );
 
-/** ✅ Outer label — memoized for stability */
+// ---------------------------
+// 🔹 Label Renderer (outer text)
+// ---------------------------
 const useRenderOuterLabel = () =>
-  useCallback(({ cx, cy, midAngle, outerRadius, payload }: any) => {
+  useCallback((props: {
+    cx?: string | number;
+    cy?: string | number;
+    midAngle?: number;
+    outerRadius?: number;
+    payload?: Datum;
+  }) => {
+    const cxNum = typeof props.cx === 'string' ? parseFloat(props.cx) : (props.cx ?? 0);
+    const cyNum = typeof props.cy === 'string' ? parseFloat(props.cy) : (props.cy ?? 0);
+    const midAngle = props.midAngle ?? 0;
+    const outerRadius = props.outerRadius ?? 0;
+    const payload = props.payload;
+    
+    if (!payload) return null;
+    
     const RAD = Math.PI / 180;
     const sin = Math.sin(-midAngle * RAD);
     const cos = Math.cos(-midAngle * RAD);
-    const x = cx + (outerRadius + 24) * cos;
-    const y = cy + (outerRadius + 24) * sin;
+    const x = cxNum + (outerRadius + 24) * cos;
+    const y = cyNum + (outerRadius + 24) * sin;
 
     return (
       <text
@@ -101,6 +142,9 @@ const useRenderOuterLabel = () =>
     );
   }, []);
 
+// ---------------------------
+// 🔹 Main Component
+// ---------------------------
 export default function MarketSharePie({
   data,
   groupMode,
@@ -109,29 +153,28 @@ export default function MarketSharePie({
   isLoading,
   colors = DEFAULT_COLORS,
 }: Props) {
-  // ✅ Normalize + sort data for consistent rendering
+  // ✅ Use backend-provided percentage, just sort and sanitize
   const normalized = useMemo(() => {
     if (!data?.length) return [];
-    const total = data.reduce((sum, d) => sum + (d.value || 0), 0);
-    const sorted = [...data].sort((a, b) =>
-      (a.brand || a.ppg || "").localeCompare(b.brand || b.ppg || "")
-    );
-    return sorted.map((d) => ({
-      ...d,
-      percentage: total > 0 ? (d.value / total) * 100 : 0,
-    }));
+    return [...data]
+      .map((d) => ({
+        ...d,
+        percentage: Number(d.percentage) || 0, // ensure number
+      }))
+      .sort((a, b) =>
+        (a.brand || a.ppg || "").localeCompare(b.brand || b.ppg || "")
+      );
   }, [data]);
 
-  const [animate, setAnimate] = useState(true);
-  // ✅ Disable animation on metric changes after first render
-  useEffect(() => {
-    setAnimate(false);
-    const timeout = setTimeout(() => setAnimate(true), 200); // smooth recovery
-    return () => clearTimeout(timeout);
-  }, [metric]);
+  // ✅ Calculate total for center label
+  const total = normalized.reduce((s, d) => s + (d.value || 0), 0);
+
 
   const renderOuterLabel = useRenderOuterLabel();
 
+  // ---------------------------
+  // 🔹 Loading & Empty states
+  // ---------------------------
   if (isLoading)
     return (
       <div className="bg-white p-6 rounded-2xl text-center text-gray-500">
@@ -146,8 +189,9 @@ export default function MarketSharePie({
       </div>
     );
 
-  const total = normalized.reduce((s, d) => s + (d.value || 0), 0);
-
+  // ---------------------------
+  // 🔹 Chart Rendering
+  // ---------------------------
   return (
     <div className="bg-white p-4 rounded-2xl relative">
       {/* Header */}
@@ -168,7 +212,7 @@ export default function MarketSharePie({
             outerRadius={120}
             paddingAngle={2}
             label={renderOuterLabel}
-            isAnimationActive={animate}
+            isAnimationActive={true}
             animationDuration={900}
             animationEasing="ease-in-out"
           >
@@ -199,11 +243,12 @@ export default function MarketSharePie({
             Total
           </text>
 
+          {/* Tooltip */}
           <Tooltip content={<GroupTooltip />} isAnimationActive={false} />
         </PieChart>
       </ResponsiveContainer>
 
-      {/* ✅ Stable Custom Legend */}
+      {/* Custom Legend */}
       <CustomLegend data={normalized} colors={colors} />
     </div>
   );

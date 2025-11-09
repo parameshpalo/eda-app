@@ -9,6 +9,7 @@ import {
   CartesianGrid,
   Legend,
   Tooltip,
+  LabelList,
 } from "recharts";
 import MetricDropdown from "../MetricDropdown";
 
@@ -93,7 +94,7 @@ export default function YearlySalesChart({
       const year = cell.dataset.year || "";
       if (!groupKey || !year) return setTooltip(null);
 
-      const row = chartData.find((r: any) => r.groupKey === groupKey);
+      const row = chartData.find((r: YearlyChartRow) => r.groupKey === groupKey);
       const value = row ? Number(row[year] || 0) : 0;
 
       const rect = cell.getBoundingClientRect();
@@ -158,7 +159,6 @@ export default function YearlySalesChart({
             tickLine={false}
           />
           {/* Disable default tooltip */}
-          {/* @ts-ignore */}
           <Tooltip wrapperStyle={{ display: "none" }} />
           <Legend verticalAlign="bottom" align="center" iconType="circle" />
           {years.map((year, i) => (
@@ -171,7 +171,24 @@ export default function YearlySalesChart({
               animationDuration={700}
               animationEasing="ease-out"
             >
-              {chartData.map((row: any) => (
+              <LabelList
+                dataKey={String(year)}
+                position="top"
+                fill="#374151"
+                content={(props: unknown) => {
+                  const { x, y, value } = (props as { x?: number; y?: number; value?: number | string });
+                  const numeric = typeof value === "number" ? value : Number(value ?? 0);
+                  if (x == null || y == null || !Number.isFinite(numeric) || numeric <= 0) return null;
+                  const label = `${(numeric / 1_000_000).toFixed(1)} M`;
+                  const verticalOffset = 8 + i * 10; // stagger labels for spacing
+                  return (
+                    <text x={x} y={y - verticalOffset} fill="#374151" textAnchor="middle" fontSize={10}>
+                      {label}
+                    </text>
+                  );
+                }}
+              />
+              {chartData.map((row: YearlyChartRow) => (
                 <Cell
                   key={`${row.groupKey}-${year}`}
                   data-key={row.groupKey}

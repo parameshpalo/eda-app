@@ -5,7 +5,7 @@ export interface Filters {
   pack_type?: string[];
   ppg?: string[];
   channel?: string[];
-  groupMode?: "brand" | "ppg";  
+  groupMode?: "brand" | "ppg" | "channel";  
 }
 
 

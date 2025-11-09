@@ -28,6 +28,7 @@ def delete_null_rows():
             if delete_flag:
                 db.delete(row)
                 deleted_count += 1
+                print(deleted_count)
 
         db.commit()
         print(f"✅ Deleted {deleted_count} rows containing NaN/NULL values.")

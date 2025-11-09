@@ -80,39 +80,11 @@ def get_fmcg_data(
     return query.limit(500).all()
 
 
-# ---- 1. Sales Value ----
-@router.get("/sales-value")
-def get_sales_value(
-    group_by: List[str] = Query(...),
-    brand: Optional[List[str]] = Query(None),
-    year: Optional[List[int]] = Query(None),
-    pack_type: Optional[List[str]] = Query(None),
-    ppg: Optional[List[str]] = Query(None),
-    channel: Optional[List[str]] = Query(None),
-    db: Session = Depends(get_db),
-):
-    return run_grouped_query(db, FMCGData.sales_value, group_by, locals())
-
-
-# ---- 2. Volume Contribution ----
-@router.get("/volume-contribution")
-def get_volume_contribution(
-    group_by: List[str] = Query(...),
-    brand: Optional[List[str]] = Query(None),
-    year: Optional[List[int]] = Query(None),
-    pack_type: Optional[List[str]] = Query(None),
-    ppg: Optional[List[str]] = Query(None),
-    channel: Optional[List[str]] = Query(None),
-    db: Session = Depends(get_db),
-):
-    return run_grouped_query(db, FMCGData.volume, group_by, locals())
-
-
-# ---- 3. Yearly Sales ----
-@router.get("/yearly-sales")
-def get_yearly_sales(
+# ---- 1. Unified Aggregation Endpoint ----
+@router.get("/aggregate")
+def get_aggregated_data(
     metric: str = Query("sales", enum=["sales", "volume"]),
-    group_by: List[str] = Query(...),
+    group_by: List[str] = Query(..., description="Fields to group by, e.g. year,brand"),
     brand: Optional[List[str]] = Query(None),
     year: Optional[List[int]] = Query(None),
     pack_type: Optional[List[str]] = Query(None),
@@ -120,13 +92,29 @@ def get_yearly_sales(
     channel: Optional[List[str]] = Query(None),
     db: Session = Depends(get_db),
 ):
+    """
+    Generic aggregation endpoint to replace:
+    - /sales-value
+    - /volume-contribution
+    - /yearly-sales
+    """
+
     metric_col = FMCGData.sales_value if metric == "sales" else FMCGData.volume
-    return run_grouped_query(db, metric_col, group_by, locals(), label="value")
+
+    # Apply filters + group and sum
+    return run_grouped_query(
+        db=db,
+        metric_col=metric_col,
+        group_by=group_by,
+        filters=locals(),
+        agg_func=func.sum,
+        label="value"
+    )
 
 
-# ---- 4. Sales Trend ----
-@router.get("/trend")
-def get_sales_trend(
+# ---- Aggregate stats without grouping ----
+@router.get("/aggregate-stats")
+def get_aggregate_stats(
     metric: str = Query("sales", enum=["sales", "volume"]),
     brand: Optional[List[str]] = Query(None),
     year: Optional[List[int]] = Query(None),
@@ -135,15 +123,37 @@ def get_sales_trend(
     channel: Optional[List[str]] = Query(None),
     db: Session = Depends(get_db),
 ):
+    """Return min, max, sum, avg (and count) for the selected metric with filters applied.
+
+    No grouping is applied; this summarizes all matching rows.
+    """
     metric_col = FMCGData.sales_value if metric == "sales" else FMCGData.volume
-    query = db.query(FMCGData.year, FMCGData.month, func.sum(metric_col).label("value"))
+
+    # Build aggregate query
+    query = db.query(
+        func.min(metric_col).label("min"),
+        func.max(metric_col).label("max"),
+        func.sum(metric_col).label("sum"),
+        func.avg(metric_col).label("avg"),
+        func.count(metric_col).label("count"),
+    )
+
     query = apply_filters(query, brand=brand, year=year, pack_type=pack_type, ppg=ppg, channel=channel)
-    query = query.group_by(FMCGData.year, FMCGData.month).order_by(FMCGData.year, FMCGData.month)
 
-    return [{"year": r.year, "month": r.month, "value": round(r.value, 2)} for r in query.all()]
+    row = query.one()
+    # Normalize None to 0.0 for numeric aggregates
+    result = {
+        "metric": metric,
+        "min": float(row.min or 0.0),
+        "max": float(row.max or 0.0),
+        "sum": float(row.sum or 0.0),
+        "avg": float(row.avg or 0.0),
+        "count": int(row.count or 0),
+    }
+    return result
 
 
-# ---- 5. Market Share ----
+# ---- 3. Market Share ----
 @router.get("/market-share")
 def get_market_share(
     metric: str = Query("sales", enum=["sales", "volume"]),
@@ -168,3 +178,71 @@ def get_market_share(
 @router.get("/health")
 def health_check():
     return {"status": "ok"}
+
+
+
+
+
+
+
+# # ---- 1. Sales Value ----
+# @router.get("/sales-value")
+# def get_sales_value(
+#     group_by: List[str] = Query(...),
+#     brand: Optional[List[str]] = Query(None),
+#     year: Optional[List[int]] = Query(None),
+#     pack_type: Optional[List[str]] = Query(None),
+#     ppg: Optional[List[str]] = Query(None),
+#     channel: Optional[List[str]] = Query(None),
+#     db: Session = Depends(get_db),
+# ):
+#     return run_grouped_query(db, FMCGData.sales_value, group_by, locals())
+
+
+# # ---- 2. Volume Contribution ----
+# @router.get("/volume-contribution")
+# def get_volume_contribution(
+#     group_by: List[str] = Query(...),
+#     brand: Optional[List[str]] = Query(None),
+#     year: Optional[List[int]] = Query(None),
+#     pack_type: Optional[List[str]] = Query(None),
+#     ppg: Optional[List[str]] = Query(None),
+#     channel: Optional[List[str]] = Query(None),
+#     db: Session = Depends(get_db),
+# ):
+#     return run_grouped_query(db, FMCGData.volume, group_by, locals())
+
+
+# # ---- 3. Yearly Sales ----
+# @router.get("/yearly-sales")
+# def get_yearly_sales(
+#     metric: str = Query("sales", enum=["sales", "volume"]),
+#     group_by: List[str] = Query(...),
+#     brand: Optional[List[str]] = Query(None),
+#     year: Optional[List[int]] = Query(None),
+#     pack_type: Optional[List[str]] = Query(None),
+#     ppg: Optional[List[str]] = Query(None),
+#     channel: Optional[List[str]] = Query(None),
+#     db: Session = Depends(get_db),
+# ):
+#     metric_col = FMCGData.sales_value if metric == "sales" else FMCGData.volume
+#     return run_grouped_query(db, metric_col, group_by, locals(), label="value")
+
+
+# # ---- 2. Sales Trend ----
+# @router.get("/trend")
+# def get_sales_trend(
+#     metric: str = Query("sales", enum=["sales", "volume"]),
+#     brand: Optional[List[str]] = Query(None),
+#     year: Optional[List[int]] = Query(None),
+#     pack_type: Optional[List[str]] = Query(None),
+#     ppg: Optional[List[str]] = Query(None),
+#     channel: Optional[List[str]] = Query(None),
+#     db: Session = Depends(get_db),
+# ):
+#     metric_col = FMCGData.sales_value if metric == "sales" else FMCGData.volume
+#     query = db.query(FMCGData.year, FMCGData.month, func.sum(metric_col).label("value"))
+#     query = apply_filters(query, brand=brand, year=year, pack_type=pack_type, ppg=ppg, channel=channel)
+#     query = query.group_by(FMCGData.year, FMCGData.month).order_by(FMCGData.year, FMCGData.month)
+
+#     return [{"year": r.year, "month": r.month, "value": round(r.value, 2)} for r in query.all()]

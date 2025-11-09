@@ -8,7 +8,6 @@ import {
   ResponsiveContainer,
   CartesianGrid,
   Legend,
-  Tooltip,
 } from "recharts";
 
 interface ChartRecord {
@@ -29,7 +28,7 @@ interface Props {
   groupMode?: "brand" | "ppg";
 }
 
-const COLORS = ["#f59e0b", "#3b82f6", "#10b981", "#8b5cf6", "#ef4444", "#14b8a6"];
+// const COLORS = ["#06b6d4", "#f43f5e", "#fbbf24", "#a3e635", "#6366f1", "#f97316"];
 
 const formatMillions = (v: number | null | undefined) =>
   v == null ? "0 M" : `${(v / 1_000_000).toFixed(1)} M`;
@@ -39,6 +38,7 @@ export default function StackedBarChart({
   type = "sales",
   groupMode = "brand",
 }: Props) {
+
   // ✅ Transform data efficiently
   const { chartData, keys } = useMemo(() => {
     const transformed: Record<number, ChartRow> = {};
@@ -53,7 +53,7 @@ export default function StackedBarChart({
     });
 
     const rows = Object.values(transformed).sort(
-      (a: any, b: any) => Number(a.year) - Number(b.year)
+      (a: ChartRow, b: ChartRow) => Number(a.year) - Number(b.year)
     );
     return { chartData: rows, keys: Array.from(keySet) };
   }, [data, groupMode]);
@@ -77,7 +77,7 @@ export default function StackedBarChart({
 
       const key = cell.getAttribute("data-key") || "";
       const year = Number(cell.getAttribute("data-year") || "");
-      const row: any = chartData.find((r: any) => Number(r.year) === year);
+      const row = chartData.find((r : ChartRow) => Number(r.year) === year);
       if (!row || !key) return setTooltip(null);
 
       const value = Number(row[key]) || 0;
@@ -151,12 +151,13 @@ export default function StackedBarChart({
             tick={{ fontSize: 12, fill: "#6b7280" }}
           />
           {/* Hide default tooltip */}
-          {/* @ts-ignore */}
-          <Tooltip wrapperStyle={{ display: "none" }} />
+          {/* @ts-ignore
+          <Tooltip wrapperStyle={{ display: "none" }} /> */}
           <Legend verticalAlign="bottom" align="center" iconType="circle" />
 
           {keys.map((key, i) => {
-            const color = COLORS[i % COLORS.length];
+            // Create color dynamically based on index, using HSL for distinction
+            const color = `hsl(${(i * 360) / keys.length}, 65%, 55%)`;
             return (
               <Bar
                 key={key}
@@ -168,7 +169,7 @@ export default function StackedBarChart({
                 animationDuration={800}
                 animationEasing="ease-in-out"
               >
-                {chartData.map((row: any, idx: number) => (
+                {chartData.map((row : ChartRow , idx: number) => (
                   <Cell
                     key={`${key}-${idx}`}
                     fill={color}

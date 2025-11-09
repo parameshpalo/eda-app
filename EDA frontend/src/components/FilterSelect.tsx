@@ -26,7 +26,7 @@ export default function FilterSelect({
     );
 
   const labelText =
-    selected.length === 0
+    selected.length === 0 || selected.length === options.length
       ? "All"
       : selected.length === 1
       ? options.find((o) => o.value === selected[0])?.label
